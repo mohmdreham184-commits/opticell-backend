@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "902742693556",
+    "project_id": "opticellfinal",
+    "storage_bucket": "opticellfinal.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:902742693556:android:5a6add35ad250a9623e9e1",
+        "android_client_info": {
+          "package_name": "com.example.opticell"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "902742693556-3agb0kam9mfingsgbdu91u3b36kjmqvk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAkckNZgw6VZBhOGJhwa5x3YYDjAd0uoT4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "902742693556-3agb0kam9mfingsgbdu91u3b36kjmqvk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "902742693556-aggj2j2c6iqbpdvbgr9gc3ceo30s4srp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.opticell"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
