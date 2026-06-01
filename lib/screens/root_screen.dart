@@ -60,17 +60,6 @@ Future<void> _notifyOnStatusChanges(List<BatchReport> statusReports) async {
   }
 }
 
-String _batchStatusLabel(BatchStatus status) {
-  switch (status) {
-    case BatchStatus.normal:
-      return 'Normal';
-    case BatchStatus.warning:
-      return 'Warning';
-    case BatchStatus.critical:
-      return 'Critical';
-  }
-}
-
 String _notificationTitleForStatus(BatchStatus status) {
   switch (status) {
     case BatchStatus.normal:
