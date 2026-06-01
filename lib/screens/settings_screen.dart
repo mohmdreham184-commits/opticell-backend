@@ -186,7 +186,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveApiEndpoint(String value) async {
     final endpoint = value.trim();
     setState(() => _apiEndpoint = endpoint);
-    apiEndpointNotifier.value = endpoint;
+    final effectiveEndpoint = endpoint.isNotEmpty ? endpoint : getApiEndpoint();
+    apiEndpointNotifier.value = effectiveEndpoint;
     await saveSetting('apiEndpoint', endpoint);
 
     if (!mounted) return;
@@ -194,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       SnackBar(
         content: Text(
           endpoint.isEmpty
-              ? 'API endpoint cleared. Using Firestore fallback.'
+              ? 'API endpoint cleared. Using default endpoint.'
               : 'API endpoint saved.',
         ),
       ),

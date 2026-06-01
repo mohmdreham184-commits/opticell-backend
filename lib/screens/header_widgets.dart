@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_state.dart';
 import 'common.dart';
+import 'shared_widgets.dart';
 
 class HeaderActions extends StatelessWidget {
   final UserModel user;
@@ -161,7 +162,7 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
       body: 'Batch 002 pressure slightly above threshold.',
       time: '14 min ago',
       icon: Icons.warning_amber_outlined,
-      color: const Color(0xFFA65F00),
+      color: warningColor,
       bg: const Color(0xFFFEF9C2),
       read: false,
     ),
@@ -416,7 +417,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.user.name);
     _emailCtrl = TextEditingController(text: widget.user.email);
-    _roleCtrl = TextEditingController(text: widget.user.role);
+    _roleCtrl = TextEditingController(text: 'Manager');
   }
 
   @override

@@ -6,7 +6,7 @@ const app = express();
 const port = 3000;
 
 // MongoDB connection string from environment or hardcoded for demo
-const uri = process.env.MONGODB_URI || 'mongodb://amohamed0238_db_user:77iDbAjliMAFVZ1r@ac-hdayv07-shard-00-00.cwxvi7c.mongodb.net:27017,ac-hdayv07-shard-00-01.cwxvi7c.mongodb.net:27017,ac-hdayv07-shard-00-02.cwxvi7c.mongodb.net:27017/opticell_db?ssl=true&replicaSet=atlas-bryk1f-shard-0&authSource=admin&retryWrites=true&w=majority&appName=opticell';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://amohamed0238_db_user:127124t1123128312@opticell.cwxvi7c.mongodb.net/?appName=opticell';
 
 app.use(cors());
 app.use(express.json());
@@ -39,19 +39,16 @@ app.get('/api/reports', async (req, res) => {
 
     // If no reports in MongoDB, return dynamically generated (changing) data
     if (reports.length === 0) {
-      const generateReports = (count = 5) => {
+      const generateReports = (count = 10) => {
         const out = [];
         for (let i = 0; i < count; i++) {
           const now = new Date();
-          // spread timestamps slightly
-          const ts = new Date(now.getTime() - i * 60000);
-          // random-ish sensor values
-          const temperature = Math.round((60 + Math.random() * 40) * 10) / 10;
-          const pressure = Math.round((60 + Math.random() * 40) * 10) / 10;
-          // derive status from thresholds
+          const ts = new Date(now.getTime() - i * 45000 - Math.random() * 15000);
+          const temperature = Math.round((55 + Math.random() * 50) * 10) / 10;
+          const pressure = Math.round((55 + Math.random() * 50) * 10) / 10;
           let status = 'normal';
-          if (temperature > 80 || pressure > 80) status = 'critical';
-          else if (temperature > 70 || pressure > 70) status = 'warning';
+          if (temperature > 85 || pressure > 85) status = 'critical';
+          else if (temperature > 72 || pressure > 72) status = 'warning';
 
           out.push({
             id: String(i + 1),
@@ -66,7 +63,7 @@ app.get('/api/reports', async (req, res) => {
         return out;
       };
 
-      return res.json(generateReports(5));
+      return res.json(generateReports(10));
     }
 
     // Transform MongoDB documents to match the app's expected format
@@ -96,15 +93,15 @@ app.get('/api/reports/stream', (req, res) => {
 
   const sendData = () => {
     const now = new Date();
-    const generate = (count = 5) => {
+    const generate = (count = 10) => {
       const out = [];
       for (let i = 0; i < count; i++) {
-        const ts = new Date(now.getTime() - i * 60000);
-        const temperature = Math.round((60 + Math.random() * 40) * 10) / 10;
-        const pressure = Math.round((60 + Math.random() * 40) * 10) / 10;
+        const ts = new Date(now.getTime() - i * 45000 - Math.random() * 15000);
+        const temperature = Math.round((55 + Math.random() * 50) * 10) / 10;
+        const pressure = Math.round((55 + Math.random() * 50) * 10) / 10;
         let status = 'normal';
-        if (temperature > 80 || pressure > 80) status = 'critical';
-        else if (temperature > 70 || pressure > 70) status = 'warning';
+        if (temperature > 85 || pressure > 85) status = 'critical';
+        else if (temperature > 72 || pressure > 72) status = 'warning';
 
         out.push({
           id: String(i + 1),
@@ -119,13 +116,15 @@ app.get('/api/reports/stream', (req, res) => {
       return out;
     };
 
-    const payload = JSON.stringify(generate(5));
+    const payload = JSON.stringify(generate(10));
+    res.write('retry: 3000\n');
     res.write(`data: ${payload}\n\n`);
+    res.flush && res.flush();
   };
 
-  // send immediately then every 3 seconds
+  // send immediately then every 2 seconds
   sendData();
-  const iv = setInterval(sendData, 3000);
+  const iv = setInterval(sendData, 2000);
 
   // clean up when client disconnects
   req.on('close', () => {

@@ -308,14 +308,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'No reports found',
+                          ApiService.lastError != null
+                              ? 'Failed to load reports: ${ApiService.lastError}'
+                              : 'No reports found',
                           style: TextStyle(
                             fontSize: 14,
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurfaceVariant,
                           ),
+                          textAlign: TextAlign.center,
                         ),
+                        if (ApiService.lastError != null)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Please verify the API endpoint and ensure the backend is running.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
                         if (hasFilter || _searchCtrl.text.isNotEmpty)
                           TextButton(
                             onPressed: () {

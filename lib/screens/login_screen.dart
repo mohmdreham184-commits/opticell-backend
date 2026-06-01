@@ -15,6 +15,9 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  late final VoidCallback _emailControllerListener;
 
   final _formKey = GlobalKey<FormState>();
 
@@ -22,16 +25,30 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoading = false;
   bool obscurePassword = true;
 
+  static const List<String> _emailDomains = [
+    'gmail.com',
+    'hotmail.com',
+    'yahoo.com',
+    'outlook.com',
+  ];
+
   @override
   void initState() {
     super.initState();
     loadRememberedUser();
+    _emailControllerListener = () {
+      if (mounted) setState(() {});
+    };
+    emailController.addListener(_emailControllerListener);
   }
 
   @override
   void dispose() {
+    emailController.removeListener(_emailControllerListener);
     emailController.dispose();
     passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -212,7 +229,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     TextFormField(
                       controller: emailController,
+                      focusNode: _emailFocusNode,
                       keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) {
+                        _passwordFocusNode.requestFocus();
+                      },
                       decoration: InputDecoration(
                         labelText: "Email",
                         prefixIcon: const Icon(Icons.email),
@@ -232,12 +254,39 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
+                    if (emailController.text.trim().isNotEmpty &&
+                        !emailController.text.contains('@'))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10, bottom: 8),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _emailDomains.map((domain) {
+                            final suggestion =
+                                '${emailController.text.trim()}@$domain';
+                            return ActionChip(
+                              label: Text(suggestion),
+                              onPressed: () {
+                                emailController.text = suggestion;
+                                emailController.selection =
+                                    TextSelection.fromPosition(
+                                      TextPosition(offset: suggestion.length),
+                                    );
+                                _passwordFocusNode.requestFocus();
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
 
                     const SizedBox(height: 15),
 
                     TextFormField(
                       controller: passwordController,
+                      focusNode: _passwordFocusNode,
                       obscureText: obscurePassword,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => login(),
                       decoration: InputDecoration(
                         labelText: "Password",
                         prefixIcon: const Icon(Icons.lock),

@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'common.dart';
 
+const Color warningColor = Color(0xFFF59E0B);
+
 class SearchBar extends StatelessWidget {
   final TextEditingController controller;
   const SearchBar({super.key, required this.controller});
@@ -77,7 +79,7 @@ class ReportCard extends StatelessWidget {
   Color get _accentColor {
     switch (report.status) {
       case BatchStatus.warning:
-        return const Color(0xFFA65F00);
+        return warningColor;
       case BatchStatus.critical:
         return const Color(0xFFC10007);
       default:
@@ -337,7 +339,7 @@ class StatusBadge extends StatelessWidget {
     String label;
     switch (status) {
       case BatchStatus.warning:
-        dotColor = const Color(0xFFA65F00);
+        dotColor = warningColor;
         label = 'Warning';
         break;
       case BatchStatus.critical:

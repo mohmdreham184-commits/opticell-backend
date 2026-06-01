@@ -1,16 +1,27 @@
-# opticell
+# Opticell
 
-A new Flutter project.
+Opticell is a real-time industrial monitoring and predictive maintenance system built using Flutter, Firebase, and Server-Sent Events (SSE). It enables engineers to monitor machine batches in real time, detect anomalies, and receive instant alerts for critical conditions.
 
-## Getting Started
+## Project Overview
 
-This project is a starting point for a Flutter application.
+This application simulates an industrial monitoring platform that tracks sensor data such as temperature and pressure. It provides real-time insights, alerts, and reporting tools to help prevent system failures.
 
-A few resources to get you started if this is your first Flutter project:
+## Features
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- Real-time monitoring using SSE live streams
+- Smart alert system for normal, warning, and critical conditions
+- Push notifications for critical events
+- Auto refresh and reconnect logic
+- Firebase Authentication and Firestore integration
+- Export batch reports to CSV
+- Offline fallback support
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## How to run
+
+1. Install Flutter and required tools
+2. Run `flutter pub get`
+3. Run `flutter run`
+
+## Notes
+
+This repository includes the Flutter app, platform folders, and CI workflow configuration. Generated build artifacts and dependency caches are ignored by `.gitignore`.

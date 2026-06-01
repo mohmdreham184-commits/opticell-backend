@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'common.dart';
 import 'header_widgets.dart';
+import 'chat_screen.dart';
 
 class HelpScreen extends StatefulWidget {
   final UserModel user;
@@ -109,9 +110,16 @@ class _HelpScreenState extends State<HelpScreen> {
                     ),
                   ),
                   ElevatedButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Opening support chat...')),
-                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ChatScreen(
+                            endpoint:
+                                'https://opticell.vercel.app/api/chat-external',
+                          ),
+                        ),
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF155DFC),

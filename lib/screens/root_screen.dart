@@ -16,7 +16,7 @@ Future<void> _showNotification(String title, String body) async {
   const androidDetails = AndroidNotificationDetails(
     'opticell_channel',
     'Opticell Alerts',
-    channelDescription: 'Critical batch alerts',
+    channelDescription: 'Batch status alerts',
     importance: Importance.high,
     priority: Priority.high,
     icon: '@mipmap/ic_launcher',
@@ -25,7 +25,75 @@ Future<void> _showNotification(String title, String body) async {
     android: androidDetails,
     iOS: DarwinNotificationDetails(),
   );
-  await _notificationsPlugin.show(0, title, body, details);
+  final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+  await _notificationsPlugin.show(id, title, body, details);
+}
+
+Future<void> _notifyOnStatusChanges(List<BatchReport> statusReports) async {
+  if (statusReports.isEmpty) return;
+
+  final criticals = statusReports
+      .where((r) => r.status == BatchStatus.critical)
+      .length;
+  final warnings = statusReports
+      .where((r) => r.status == BatchStatus.warning)
+      .length;
+  final normals = statusReports
+      .where((r) => r.status == BatchStatus.normal)
+      .length;
+
+  if (criticals > 0) {
+    await _showNotification(
+      _notificationTitleForStatus(BatchStatus.critical),
+      _notificationBodyForCounts(criticals, warnings, normals),
+    );
+  } else if (warnings > 0) {
+    await _showNotification(
+      _notificationTitleForStatus(BatchStatus.warning),
+      _notificationBodyForCounts(criticals, warnings, normals),
+    );
+  } else {
+    await _showNotification(
+      _notificationTitleForStatus(BatchStatus.normal),
+      _notificationBodyForCounts(criticals, warnings, normals),
+    );
+  }
+}
+
+String _batchStatusLabel(BatchStatus status) {
+  switch (status) {
+    case BatchStatus.normal:
+      return 'Normal';
+    case BatchStatus.warning:
+      return 'Warning';
+    case BatchStatus.critical:
+      return 'Critical';
+  }
+}
+
+String _notificationTitleForStatus(BatchStatus status) {
+  switch (status) {
+    case BatchStatus.normal:
+      return 'Batch Back to Normal';
+    case BatchStatus.warning:
+      return 'Warning Batch Detected';
+    case BatchStatus.critical:
+      return 'Critical Batch Alert';
+  }
+}
+
+String _notificationBodyForCounts(
+  int criticalCount,
+  int warningCount,
+  int normalCount,
+) {
+  if (criticalCount > 0) {
+    return '$criticalCount critical batch(es) need immediate attention.';
+  }
+  if (warningCount > 0) {
+    return '$warningCount warning batch(es) detected.';
+  }
+  return '$normalCount batch(es) returned to normal status.';
 }
 
 class RootScreen extends StatefulWidget {
@@ -78,17 +146,22 @@ class _RootScreenState extends State<RootScreen> {
     _refreshTimer = null;
   }
 
-  final Set<String> _seenCriticalIds = <String>{};
+  final Map<String, BatchStatus> _seenBatchStatus = <String, BatchStatus>{};
 
   void _startSse() {
     _stopSse();
     final endpoint = apiEndpointNotifier.value.trim();
-    if (endpoint.isEmpty) return;
+    if (endpoint.isEmpty) {
+      debugPrint('SSE: endpoint is empty');
+      return;
+    }
 
+    debugPrint('SSE: starting connection to $endpoint');
     try {
       _sseSub = ApiService.streamReports(endpoint).listen(
         (reports) async {
           if (!mounted) return;
+          debugPrint('SSE: received ${reports.length} reports');
           setState(() {
             _allReports = reports;
             _loading = false;
@@ -96,20 +169,21 @@ class _RootScreenState extends State<RootScreen> {
 
           if (!notificationsEnabledNotifier.value) return;
 
-          // Find new criticals that we haven't notified about
-          final newCriticals = reports
-              .where(
-                (r) =>
-                    r.status == BatchStatus.critical &&
-                    !_seenCriticalIds.contains(r.id),
-              )
-              .toList();
-          if (newCriticals.isNotEmpty) {
-            _seenCriticalIds.addAll(newCriticals.map((r) => r.id));
-            await _showNotification(
-              'Critical Alert',
-              '${newCriticals.length} new critical batch(es) need attention',
-            );
+          final newStatusReports = <BatchReport>[];
+          for (final r in reports) {
+            final previousStatus = _seenBatchStatus[r.id];
+            if (previousStatus == null) {
+              if (r.status != BatchStatus.normal) {
+                newStatusReports.add(r);
+              }
+            } else if (previousStatus != r.status) {
+              newStatusReports.add(r);
+            }
+            _seenBatchStatus[r.id] = r.status;
+          }
+
+          if (newStatusReports.isNotEmpty) {
+            await _notifyOnStatusChanges(newStatusReports);
           }
         },
         onError: (e) {
@@ -149,10 +223,12 @@ class _RootScreenState extends State<RootScreen> {
     setState(() => _loading = true);
     try {
       final reports = await ApiService.fetchReports();
+      if (!mounted) return;
       setState(() {
         _allReports = reports;
         _loading = false;
       });
+      debugPrint('_loadData: got ${reports.length} reports from API');
       // Show user-friendly warning if the ApiService recorded an error
       if (ApiService.lastError != null && mounted) {
         final msg = ApiService.lastError!;
@@ -162,26 +238,33 @@ class _RootScreenState extends State<RootScreen> {
         ApiService.lastError = null;
       }
       if (notificationsEnabledNotifier.value) {
-        final criticals = reports
-            .where((r) => r.status == BatchStatus.critical)
-            .toList();
-        if (criticals.isNotEmpty) {
-          await _showNotification(
-            'Critical Alert',
-            '${criticals.length} batch(es) need immediate attention',
-          );
+        final newStatusReports = <BatchReport>[];
+        for (final r in reports) {
+          final previousStatus = _seenBatchStatus[r.id];
+          if (previousStatus == null) {
+            if (r.status != BatchStatus.normal) {
+              newStatusReports.add(r);
+            }
+          } else if (previousStatus != r.status) {
+            newStatusReports.add(r);
+          }
+          _seenBatchStatus[r.id] = r.status;
+        }
+
+        if (newStatusReports.isNotEmpty) {
+          await _notifyOnStatusChanges(newStatusReports);
         }
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('_loadData failed: $e');
+      // Don't use dummy data here; wait for SSE to provide live data
+      if (!mounted) return;
       setState(() {
-        _allReports = dummyReports;
         _loading = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to load data — using local fallback'),
-          ),
+          const SnackBar(content: Text('Connecting to live data stream...')),
         );
       }
     }

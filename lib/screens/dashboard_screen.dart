@@ -170,8 +170,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: StatCard(
                       label: 'Warnings',
                       value: '$warning',
-                      color: const Color(0xFFA65F00),
-                      bgColor: const Color(0xFFFEF9C2),
+                      color: widgets.warningColor,
+                      bgColor: const Color(0xFFFFF3CD),
                       icon: Icons.warning_amber_outlined,
                     ),
                   ),
@@ -289,11 +289,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'No batches found',
+                      ApiService.lastError != null
+                          ? 'Failed to load batches: ${ApiService.lastError}'
+                          : 'No batches found',
                       style: TextStyle(
                         fontSize: 14,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 )
@@ -476,10 +479,7 @@ class StatusBar extends StatelessWidget {
                 if (warning > 0)
                   Expanded(
                     flex: warning,
-                    child: Container(
-                      height: 12,
-                      color: const Color(0xFFA65F00),
-                    ),
+                    child: Container(height: 12, color: widgets.warningColor),
                   ),
                 if (critical > 0)
                   Expanded(
@@ -502,7 +502,7 @@ class StatusBar extends StatelessWidget {
                 pct: (normal / total * 100).round(),
               ),
               LegendItem(
-                color: const Color(0xFFA65F00),
+                color: widgets.warningColor,
                 label: 'Warning',
                 pct: (warning / total * 100).round(),
               ),

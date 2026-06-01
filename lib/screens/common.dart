@@ -156,18 +156,9 @@ class ApiService {
 
   static Future<List<BatchReport>> fetchReports() async {
     lastError = null;
-    final endpoint = apiEndpointNotifier.value.trim();
-    if (endpoint.isNotEmpty) {
-      final endpointReports = await fetchReportsFromEndpoint(endpoint);
-      if (endpointReports.isNotEmpty) {
-        return endpointReports;
-      }
-      debugPrint(
-        'API endpoint provided but returned no records; falling back.',
-      );
-    }
-
-    return fetchReportsFromFirestore();
+    final endpoint = getApiEndpoint();
+    final endpointReports = await fetchReportsFromEndpoint(endpoint);
+    return endpointReports;
   }
 
   static Future<List<BatchReport>> fetchReportsFromEndpoint(
@@ -275,13 +266,22 @@ class ApiService {
                 .send(request)
                 .timeout(const Duration(seconds: 20));
 
+            if (streamed.statusCode != 200) {
+              debugPrint('SSE endpoint response ${streamed.statusCode}');
+              lastError = 'Live stream unavailable (${streamed.statusCode})';
+              client.close();
+              if (cancelled) break;
+              await Future.delayed(const Duration(seconds: 3));
+              continue;
+            }
+
             final buffer = StringBuffer();
 
             await for (final chunk in streamed.stream.transform(utf8.decoder)) {
               if (cancelled) break;
               buffer.write(chunk);
 
-              String content = buffer.toString();
+              String content = buffer.toString().replaceAll('\r\n', '\n');
               int idx;
               while ((idx = content.indexOf('\n\n')) != -1) {
                 final rawEvent = content.substring(0, idx).trim();
