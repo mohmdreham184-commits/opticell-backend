@@ -38,24 +38,16 @@ Future<void> _notifyOnStatusChanges(List<BatchReport> statusReports) async {
   final warnings = statusReports
       .where((r) => r.status == BatchStatus.warning)
       .length;
-  final normals = statusReports
-      .where((r) => r.status == BatchStatus.normal)
-      .length;
 
   if (criticals > 0) {
     await _showNotification(
       _notificationTitleForStatus(BatchStatus.critical),
-      _notificationBodyForCounts(criticals, warnings, normals),
+      _notificationBodyForCounts(criticals, warnings),
     );
   } else if (warnings > 0) {
     await _showNotification(
       _notificationTitleForStatus(BatchStatus.warning),
-      _notificationBodyForCounts(criticals, warnings, normals),
-    );
-  } else {
-    await _showNotification(
-      _notificationTitleForStatus(BatchStatus.normal),
-      _notificationBodyForCounts(criticals, warnings, normals),
+      _notificationBodyForCounts(criticals, warnings),
     );
   }
 }
@@ -71,18 +63,14 @@ String _notificationTitleForStatus(BatchStatus status) {
   }
 }
 
-String _notificationBodyForCounts(
-  int criticalCount,
-  int warningCount,
-  int normalCount,
-) {
+String _notificationBodyForCounts(int criticalCount, int warningCount) {
+  if (criticalCount > 0 && warningCount > 0) {
+    return '$criticalCount critical and $warningCount warning batch(es) detected.';
+  }
   if (criticalCount > 0) {
     return '$criticalCount critical batch(es) need immediate attention.';
   }
-  if (warningCount > 0) {
-    return '$warningCount warning batch(es) detected.';
-  }
-  return '$normalCount batch(es) returned to normal status.';
+  return '$warningCount warning batch(es) detected.';
 }
 
 class RootScreen extends StatefulWidget {
