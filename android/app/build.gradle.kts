@@ -9,7 +9,6 @@ plugins {
 
 android {
     ndkVersion = "28.2.13676358"
-    ndkPath = "C:/Users/reham/AppData/Local/Android/sdk/ndk/28.2.13676358"
 
     namespace = "com.example.opticell"
     compileSdk = flutter.compileSdkVersion

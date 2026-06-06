@@ -7,7 +7,10 @@ import 'package:http/http.dart' as http;
 class ChatScreen extends StatefulWidget {
   final String endpoint;
 
-  const ChatScreen({super.key, required this.endpoint});
+  const ChatScreen({
+    super.key,
+    this.endpoint = 'https://opticell.vercel.app/api/chat-external',
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -43,7 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'message': text}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 60));
 
       String reply = '';
       try {

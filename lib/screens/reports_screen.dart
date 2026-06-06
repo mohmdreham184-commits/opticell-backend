@@ -108,11 +108,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
       } else {
         final path = await saveCsv(csv);
-        await Share.shareXFiles([XFile(path)], text: 'Opticell reports export');
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Report exported: $path')));
+        final bool isAndroid = defaultTargetPlatform == TargetPlatform.android;
+        if (isAndroid) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Report saved to: $path')),
+            );
+          }
+        } else {
+          await Share.shareXFiles([XFile(path)], text: 'Opticell reports export');
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Report exported: $path')));
+          }
         }
       }
     } catch (e) {

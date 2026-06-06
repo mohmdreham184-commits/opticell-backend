@@ -71,5 +71,9 @@
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>نحتاج الوصول لمكتبة الصور</string>
 
+		<key>UIFileSharingEnabled</key>
+		<true/>
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
 	</dict>
 </plist>
