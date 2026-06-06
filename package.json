@@ -11,18 +11,13 @@
     "express": "^4.22.2",
     "mongodb": "^6.21.0"
   },
-  "directories": {
-    "lib": "lib",
-    "test": "test"
-  },
+  "type": "commonjs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mohmdreham184-commits/OPTICELL-.git"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/mohmdreham184-commits/OPTICELL-/issues"
   },
