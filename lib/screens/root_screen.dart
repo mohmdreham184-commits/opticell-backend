@@ -13,6 +13,10 @@ import 'help_screen.dart';
 final FlutterLocalNotificationsPlugin _notificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+/// =====================
+/// NOTIFICATIONS
+/// =====================
+
 Future<void> _showNotification(String title, String body) async {
   const androidDetails = AndroidNotificationDetails(
     'opticell_channel',
@@ -33,29 +37,29 @@ Future<void> _showNotification(String title, String body) async {
   await _notificationsPlugin.show(id, title, body, details);
 }
 
-Future<void> _notifyOnStatusChanges(List<BatchReport> statusReports) async {
-  if (statusReports.isEmpty) return;
+Future<void> _notifyOnStatusChanges(List<BatchReport> reports) async {
+  if (reports.isEmpty) return;
 
-  final criticals =
-      statusReports.where((r) => r.status == BatchStatus.critical).length;
+  final critical =
+      reports.where((r) => r.status == BatchStatus.critical).length;
 
-  final warnings =
-      statusReports.where((r) => r.status == BatchStatus.warning).length;
+  final warning =
+      reports.where((r) => r.status == BatchStatus.warning).length;
 
-  if (criticals > 0) {
+  if (critical > 0) {
     await _showNotification(
-      _notificationTitleForStatus(BatchStatus.critical),
-      _notificationBodyForCounts(criticals, warnings),
+      _title(BatchStatus.critical),
+      _body(critical, warning),
     );
-  } else if (warnings > 0) {
+  } else if (warning > 0) {
     await _showNotification(
-      _notificationTitleForStatus(BatchStatus.warning),
-      _notificationBodyForCounts(criticals, warnings),
+      _title(BatchStatus.warning),
+      _body(critical, warning),
     );
   }
 }
 
-String _notificationTitleForStatus(BatchStatus status) {
+String _title(BatchStatus status) {
   switch (status) {
     case BatchStatus.normal:
       return 'Batch Back to Normal';
@@ -66,15 +70,19 @@ String _notificationTitleForStatus(BatchStatus status) {
   }
 }
 
-String _notificationBodyForCounts(int criticalCount, int warningCount) {
-  if (criticalCount > 0 && warningCount > 0) {
-    return '$criticalCount critical and $warningCount warning batch(es) detected.';
+String _body(int critical, int warning) {
+  if (critical > 0 && warning > 0) {
+    return '$critical critical and $warning warning batch(es).';
   }
-  if (criticalCount > 0) {
-    return '$criticalCount critical batch(es) need immediate attention.';
+  if (critical > 0) {
+    return '$critical critical batch(es) need attention.';
   }
-  return '$warningCount warning batch(es) detected.';
+  return '$warning warning batch(es).';
 }
+
+/// =====================
+/// ROOT SCREEN
+/// =====================
 
 class RootScreen extends StatefulWidget {
   final UserModel user;
@@ -88,14 +96,14 @@ class RootScreen extends StatefulWidget {
 class _RootScreenState extends State<RootScreen> {
   int _selectedIndex = 0;
 
-  List<BatchReport> _allReports = [];
+  List<BatchReport> _reports = [];
   bool _loading = true;
 
-  Timer? _refreshTimer;
+  Timer? _timer;
   StreamSubscription<List<BatchReport>>? _sseSub;
 
-  final Map<String, BatchStatus> _seenBatchStatus = {};
-  bool _hasSyncedStatuses = false;
+  final Map<String, BatchStatus> _seen = {};
+  bool _synced = false;
 
   @override
   void initState() {
@@ -103,17 +111,21 @@ class _RootScreenState extends State<RootScreen> {
 
     _loadData();
 
-    autoRefreshNotifier.addListener(_onAutoRefreshChanged);
-    refreshIntervalNotifier.addListener(_onAutoRefreshChanged);
+    autoRefreshNotifier.addListener(_autoRefreshChanged);
+    refreshIntervalNotifier.addListener(_autoRefreshChanged);
 
     if (autoRefreshNotifier.value) {
       _startTimer();
     }
 
-    _startSse();
+    _startSSE();
   }
 
-  void _onAutoRefreshChanged() {
+  /// =====================
+  /// AUTO REFRESH
+  /// =====================
+
+  void _autoRefreshChanged() {
     if (autoRefreshNotifier.value) {
       _startTimer();
     } else {
@@ -126,44 +138,52 @@ class _RootScreenState extends State<RootScreen> {
 
     final minutes = refreshIntervalNotifier.value;
 
-    _refreshTimer = Timer.periodic(
+    _timer = Timer.periodic(
       Duration(minutes: minutes),
       (_) => _loadData(),
     );
   }
 
   void _stopTimer() {
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
+    _timer?.cancel();
+    _timer = null;
   }
 
-  List<BatchReport> _collectChangedReports(List<BatchReport> reports) {
+  /// =====================
+  /// CHANGE DETECTION
+  /// =====================
+
+  List<BatchReport> _detectChanges(List<BatchReport> reports) {
     final changed = <BatchReport>[];
 
     for (final r in reports) {
-      final previous = _seenBatchStatus[r.id];
+      final prev = _seen[r.id];
 
-      if (previous == null) {
-        if (_hasSyncedStatuses && r.status != BatchStatus.normal) {
+      if (prev == null) {
+        if (_synced && r.status != BatchStatus.normal) {
           changed.add(r);
         }
-      } else if (previous != r.status) {
+      } else if (prev != r.status) {
         changed.add(r);
       }
 
-      _seenBatchStatus[r.id] = r.status;
+      _seen[r.id] = r.status;
     }
 
-    _hasSyncedStatuses = true;
+    _synced = true;
     return changed;
   }
 
-  void _startSse() {
-    _stopSse();
+  /// =====================
+  /// SSE
+  /// =====================
+
+  void _startSSE() {
+    _stopSSE();
 
     final endpoint = getApiEndpoint();
 
-    debugPrint('SSE connecting to: $endpoint');
+    debugPrint('SSE -> $endpoint');
 
     try {
       _sseSub = ApiService.streamReports(endpoint).listen(
@@ -171,13 +191,13 @@ class _RootScreenState extends State<RootScreen> {
           if (!mounted) return;
 
           setState(() {
-            _allReports = reports;
+            _reports = reports;
             _loading = false;
           });
 
           if (!notificationsEnabledNotifier.value) return;
 
-          final changes = _collectChangedReports(reports);
+          final changes = _detectChanges(reports);
 
           if (changes.isNotEmpty) {
             await _notifyOnStatusChanges(changes);
@@ -186,40 +206,41 @@ class _RootScreenState extends State<RootScreen> {
         onError: (e) {
           debugPrint('SSE error: $e');
         },
-        cancelOnError: false,
       );
     } catch (e) {
       debugPrint('SSE failed: $e');
     }
   }
 
-  void _stopSse() {
+  void _stopSSE() {
     _sseSub?.cancel();
     _sseSub = null;
   }
+
+  /// =====================
+  /// LOAD DATA
+  /// =====================
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
 
     try {
-      final reports = await ApiService.fetchReports();
+      final data = await ApiService.fetchReports();
 
       if (!mounted) return;
 
       setState(() {
-        _allReports = reports;
+        _reports = data;
         _loading = false;
       });
 
-      if (notificationsEnabledNotifier.value) {
-        final changes = _collectChangedReports(reports);
+      final changes = _detectChanges(data);
 
-        if (changes.isNotEmpty) {
-          await _notifyOnStatusChanges(changes);
-        }
+      if (notificationsEnabledNotifier.value && changes.isNotEmpty) {
+        await _notifyOnStatusChanges(changes);
       }
     } catch (e) {
-      debugPrint('Load failed: $e');
+      debugPrint('Load error: $e');
 
       if (!mounted) return;
 
@@ -227,7 +248,11 @@ class _RootScreenState extends State<RootScreen> {
     }
   }
 
-  Future<void> _handleSignOut() async {
+  /// =====================
+  /// SIGN OUT
+  /// =====================
+
+  Future<void> _signOut() async {
     await FirebaseAuth.instance.signOut();
 
     if (!mounted) return;
@@ -238,32 +263,36 @@ class _RootScreenState extends State<RootScreen> {
   @override
   void dispose() {
     _stopTimer();
-    _stopSse();
+    _stopSSE();
 
-    autoRefreshNotifier.removeListener(_onAutoRefreshChanged);
-    refreshIntervalNotifier.removeListener(_onAutoRefreshChanged);
+    autoRefreshNotifier.removeListener(_autoRefreshChanged);
+    refreshIntervalNotifier.removeListener(_autoRefreshChanged);
 
     super.dispose();
   }
+
+  /// =====================
+  /// UI
+  /// =====================
 
   @override
   Widget build(BuildContext context) {
     final screens = [
       DashboardScreen(
-        reports: _allReports,
+        reports: _reports,
         loading: _loading,
         user: widget.user,
-        onSignOut: _handleSignOut,
+        onSignOut: _signOut,
       ),
       ReportsScreen(
-        reports: _allReports,
+        reports: _reports,
         loading: _loading,
         onRefresh: _loadData,
         user: widget.user,
-        onSignOut: _handleSignOut,
+        onSignOut: _signOut,
       ),
-      SettingsScreen(user: widget.user, onSignOut: _handleSignOut),
-      HelpScreen(user: widget.user, onSignOut: _handleSignOut),
+      SettingsScreen(user: widget.user, onSignOut: _signOut),
+      HelpScreen(user: widget.user, onSignOut: _signOut),
     ];
 
     return Scaffold(
@@ -271,9 +300,73 @@ class _RootScreenState extends State<RootScreen> {
         index: _selectedIndex,
         children: screens,
       ),
-      bottomNavigationBar: AppBottomNav(
+      bottomNavigationBar: _AppBottomNav(
         selectedIndex: _selectedIndex,
         onTap: (i) => setState(() => _selectedIndex = i),
+      ),
+    );
+  }
+}
+
+/// =====================
+/// BOTTOM NAV
+/// =====================
+
+class _AppBottomNav extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onTap;
+
+  const _AppBottomNav({
+    required this.selectedIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).dividerColor,
+            width: 0.6,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _item(Icons.dashboard, 0, 'Dashboard'),
+              _item(Icons.bar_chart, 1, 'Reports'),
+              _item(Icons.settings, 2, 'Settings'),
+              _item(Icons.help, 3, 'Help'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _item(IconData icon, int index, String label) {
+    final active = selectedIndex == index;
+
+    return GestureDetector(
+      onTap: () => onTap(index),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: active ? Colors.blue : Colors.grey),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: active ? Colors.blue : Colors.grey,
+            ),
+          ),
+        ],
       ),
     );
   }
