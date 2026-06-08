@@ -118,7 +118,8 @@ class _RootScreenState extends State<RootScreen> {
       _startTimer();
     }
 
-    _startSSE();
+    // SSE is disabled for now - using polling instead
+    // _startSSE();
   }
 
   /// =====================

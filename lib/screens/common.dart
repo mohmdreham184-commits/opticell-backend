@@ -157,8 +157,25 @@ class ApiService {
   static Future<List<BatchReport>> fetchReports() async {
     lastError = null;
     final endpoint = getApiEndpoint();
-    final endpointReports = await fetchReportsFromEndpoint(endpoint);
-    return endpointReports;
+    debugPrint('📡 Fetching from: $endpoint');
+    
+    final reports = await fetchReportsFromEndpoint(endpoint);
+    
+    if (reports.isNotEmpty) {
+      debugPrint('✅ Got ${reports.length} reports from API');
+      return reports;
+    }
+    
+    debugPrint('⚠️ API empty or failed. Trying Firestore...');
+    final firebaseReports = await fetchReportsFromFirestore();
+    
+    if (firebaseReports.isNotEmpty) {
+      debugPrint('✅ Got ${firebaseReports.length} reports from Firestore');
+      return firebaseReports;
+    }
+    
+    debugPrint('⚠️ Using dummy data');
+    return dummyReports;
   }
 
   static Future<List<BatchReport>> fetchReportsFromEndpoint(
@@ -168,26 +185,26 @@ class ApiService {
       final uri = Uri.parse(endpoint);
       final response = await http.get(
         uri,
-        headers: {'Accept': 'application/json'},
-      );
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Opticell/1.0',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('📊 Response: ${response.statusCode}');
 
       if (response.statusCode != 200) {
-        final msg = 'Endpoint request failed (${response.statusCode})';
-        debugPrint('$msg: ${response.body}');
-        lastError = msg;
+        lastError = 'HTTP ${response.statusCode}';
+        return [];
+      }
+
+      if (response.body.isEmpty) {
+        lastError = 'Empty response';
         return [];
       }
 
       final decoded = jsonDecode(response.body);
-      final records = decoded is List
-          ? decoded
-          : decoded['data'] ?? decoded['reports'] ?? [];
-      if (records is! List) {
-        debugPrint(
-          'Endpoint JSON returned unexpected type: ${records.runtimeType}',
-        );
-        return [];
-      }
+      final records = decoded is List ? decoded : [];
 
       return records.map((item) {
         if (item is Map<String, dynamic>) {
@@ -196,33 +213,36 @@ class ApiService {
         if (item is Map) {
           return BatchReport.fromJson(Map<String, dynamic>.from(item));
         }
-        throw StateError('Invalid report item format');
+        return BatchReport.fromJson({});
       }).toList();
     } catch (e) {
-      debugPrint('Failed to load reports from endpoint: $e');
       lastError = e.toString();
+      debugPrint('❌ API error: $e');
       return [];
     }
   }
 
   static Future<List<BatchReport>> fetchReportsFromFirestore() async {
     try {
+      debugPrint('🔥 Trying Firestore...');
       final snapshot = await FirebaseFirestore.instance
           .collection('reports')
           .orderBy('dateTime', descending: true)
-          .get();
+          .limit(20)
+          .get()
+          .timeout(const Duration(seconds: 10));
 
       if (snapshot.docs.isEmpty) {
-        return dummyReports;
+        return [];
       }
 
       return snapshot.docs
           .map((doc) => BatchReport.fromJson({'id': doc.id, ...doc.data()}))
           .toList();
     } catch (e) {
-      debugPrint('Failed to load reports from Firestore: $e');
       lastError = e.toString();
-      return dummyReports;
+      debugPrint('❌ Firestore error: $e');
+      return [];
     }
   }
 
@@ -258,22 +278,28 @@ class ApiService {
               streamUri = uri.replace(path: newPath);
             }
 
+            debugPrint('🔌 Connecting to SSE: $streamUri (attempt $attempt)');
+
             final client = http.Client();
             final request = http.Request('GET', streamUri);
             request.headers['Accept'] = 'text/event-stream';
+            request.headers['User-Agent'] = 'Opticell/1.0.0';
 
             final streamed = await client
                 .send(request)
                 .timeout(const Duration(seconds: 20));
 
             if (streamed.statusCode != 200) {
-              debugPrint('SSE endpoint response ${streamed.statusCode}');
+              debugPrint('❌ SSE endpoint response ${streamed.statusCode}');
               lastError = 'Live stream unavailable (${streamed.statusCode})';
               client.close();
               if (cancelled) break;
               await Future.delayed(const Duration(seconds: 3));
               continue;
             }
+
+            debugPrint('✅ SSE connected successfully');
+            attempt = 0; // Reset on successful connection
 
             final buffer = StringBuffer();
 
@@ -300,7 +326,9 @@ class ApiService {
                     final records = decoded is List
                         ? decoded
                         : decoded['data'] ?? decoded['reports'] ?? [];
-                    if (records is List) {
+                    
+                    if (records is List && records.isNotEmpty) {
+                      debugPrint('📨 SSE received ${records.length} records');
                       final list = records.map((item) {
                         if (item is Map<String, dynamic>) {
                           return BatchReport.fromJson(item);
@@ -317,7 +345,7 @@ class ApiService {
                       }
                     }
                   } catch (e) {
-                    debugPrint('SSE parse error: $e');
+                    debugPrint('⚠️ SSE parse error: $e');
                     lastError = e.toString();
                   }
                 }
@@ -328,16 +356,18 @@ class ApiService {
             }
 
             client.close();
+            debugPrint('⚠️ SSE connection closed cleanly');
 
             // clean disconnect: reset attempts
             attempt = 0;
             if (!cancelled) await Future.delayed(baseDelay);
           } catch (e) {
-            debugPrint('SSE connection error: $e');
+            debugPrint('❌ SSE connection error (attempt $attempt): $e');
             lastError = e.toString();
             if (cancelled) break;
             final mult = pow(2, min(attempt, maxRetries)).toInt();
             final waitSec = min(60, baseDelay.inSeconds * mult);
+            debugPrint('⏳ Retrying in ${waitSec}s...');
             await Future.delayed(Duration(seconds: waitSec));
           }
         }
