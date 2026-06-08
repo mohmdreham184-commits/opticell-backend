@@ -18,6 +18,34 @@ const sampleReports = [
 
 let mongoReports = [];
 let isMongoConnected = false;
+let mongoCollection = null;
+let mongoClient = null;
+let mongoChangeStream = null;
+const sseClients = new Set();
+
+function normalizeReports(reports) {
+  return reports.map(doc => ({
+    id: doc._id ? doc._id.toString() : doc.id,
+    title: doc.title || 'Unknown',
+    dateTime: doc.dateTime || new Date().toISOString(),
+    status: doc.status || 'normal',
+    temperature: Number(doc.temperature) || 0,
+    pressure: Number(doc.pressure) || 0,
+    description: doc.description || 'No description'
+  }));
+}
+
+function getCurrentReports() {
+  const current = isMongoConnected && mongoReports.length > 0 ? mongoReports : sampleReports;
+  return normalizeReports(current);
+}
+
+function broadcastReports() {
+  const payload = JSON.stringify(getCurrentReports());
+  for (const client of sseClients) {
+    client.write(`data: ${payload}\n\n`);
+  }
+}
 
 // Try to connect to MongoDB (optional)
 async function connectToMongo() {
@@ -30,13 +58,35 @@ async function connectToMongo() {
     const db = client.db('opticell_db');
     const collection = db.collection('reports');
     
+    mongoClient = client;
+    mongoCollection = collection;
     mongoReports = await collection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
     isMongoConnected = true;
     console.log("✅ MongoDB connected, loaded", mongoReports.length, "reports");
+
+    try {
+      mongoChangeStream = collection.watch([], { fullDocument: 'updateLookup' });
+      mongoChangeStream.on('change', async (change) => {
+        try {
+          mongoReports = await collection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
+          broadcastReports();
+          console.log('🔁 MongoDB change stream triggered:', change.operationType);
+        } catch (streamErr) {
+          console.warn('⚠️ Error refreshing reports from change stream:', streamErr.message);
+        }
+      });
+      mongoChangeStream.on('error', (streamErr) => {
+        console.warn('⚠️ MongoDB change stream error:', streamErr.message);
+      });
+      console.log('✅ MongoDB change stream enabled');
+    } catch (streamErr) {
+      console.warn('⚠️ MongoDB change stream not available:', streamErr.message);
+    }
   } catch (err) {
     console.warn("⚠️ MongoDB connection failed, using sample data:", err.message);
     mongoReports = sampleReports;
     isMongoConnected = false;
+    mongoCollection = null;
   }
 }
 
@@ -48,32 +98,33 @@ app.get("/", (req, res) => {
   res.status(200).send("OK 🚀");
 });
 
+// Live reports stream via SSE
+app.get("/api/reports/stream", (req, res) => {
+  res.set({
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'text/event-stream',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+
+  const currentReports = getCurrentReports();
+  res.write(`data: ${JSON.stringify(currentReports)}\n\n`);
+
+  sseClients.add(res);
+  console.log(`🔌 SSE client connected (${sseClients.size} subscribers)`);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+    console.log(`⚠️ SSE client disconnected (${sseClients.size} subscribers)`);
+  });
+});
+
 // Get all reports
 app.get("/api/reports", async (req, res) => {
   try {
-    let reportsToReturn;
-
-    // If MongoDB is connected, use it
-    if (isMongoConnected && mongoReports.length > 0) {
-      reportsToReturn = mongoReports;
-      console.log("📡 Returning", reportsToReturn.length, "reports from MongoDB");
-    } else {
-      reportsToReturn = sampleReports;
-      console.log("📡 Returning", reportsToReturn.length, "sample reports");
-    }
-
-    // Transform MongoDB data if needed
-    const transformed = reportsToReturn.map(doc => ({
-      id: doc._id ? doc._id.toString() : doc.id,
-      title: doc.title || 'Unknown',
-      dateTime: doc.dateTime || new Date().toISOString(),
-      status: doc.status || 'normal',
-      temperature: Number(doc.temperature) || 0,
-      pressure: Number(doc.pressure) || 0,
-      description: doc.description || 'No description'
-    }));
-
-    res.json(transformed);
+    const currentReports = getCurrentReports();
+    console.log("📡 Returning", currentReports.length, "reports");
+    res.json(currentReports);
   } catch (err) {
     console.error("❌ Error in /api/reports:", err.message);
     res.status(500).json({ error: "Failed to fetch reports", details: err.message });
@@ -92,8 +143,14 @@ app.post("/api/reports", async (req, res) => {
       description: req.body.description || 'Manual entry'
     };
 
-    // Add to local array
-    sampleReports.unshift({ id: Date.now().toString(), ...newReport });
+    if (isMongoConnected && mongoCollection) {
+      await mongoCollection.insertOne(newReport);
+      mongoReports = await mongoCollection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
+    } else {
+      sampleReports.unshift({ id: Date.now().toString(), ...newReport });
+    }
+
+    broadcastReports();
 
     console.log("✅ New report added:", newReport.title);
     res.status(201).json({ success: true, report: newReport });
