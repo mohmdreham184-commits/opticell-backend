@@ -18,7 +18,7 @@ const sampleReports = [
 
 let mongoReports = [];
 let isMongoConnected = false;
-let mongoCollection = null;
+let mongoDb = null;
 let mongoClient = null;
 let mongoChangeStream = null;
 const sseClients = new Set();
@@ -35,9 +35,60 @@ function normalizeReports(reports) {
   }));
 }
 
+async function fetchAndMergeReports(db) {
+  try {
+    const reportsCollection = db.collection('reports');
+    const sensorCollection = db.collection('sensor_readings');
+
+    const reportsDocs = await reportsCollection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
+    const sensorDocs = await sensorCollection.find({}).sort({ timestamp: -1 }).limit(100).toArray();
+
+    const normalizedReports = reportsDocs.map(doc => ({
+      id: doc._id ? doc._id.toString() : doc.id,
+      title: doc.title || 'Unknown',
+      dateTime: doc.dateTime || new Date().toISOString(),
+      status: doc.status || 'normal',
+      temperature: Number(doc.temperature) || 0,
+      pressure: Number(doc.pressure) || 0,
+      description: doc.description || 'No description',
+    }));
+
+    const mappedSensors = sensorDocs.map(doc => {
+      const temp = doc.data ? (doc.data.temprature || doc.data.temperature || 0) : 0;
+      const pressure = doc.data ? (doc.data.pressure || 0) : 0;
+      
+      // Determine status based on thresholds
+      let status = 'normal';
+      if (temp > 80 || pressure > 80) {
+        status = 'critical';
+      } else if (temp > 70 || pressure > 70) {
+        status = 'warning';
+      }
+
+      return {
+        id: doc._id.toString(),
+        title: `Sensor ${doc.sensorId || '1'}`,
+        dateTime: doc.timestamp || new Date().toISOString(),
+        status: status,
+        temperature: Number(temp),
+        pressure: Number(pressure),
+        description: doc.data ? `Humidity: ${doc.data.humidity || 0}%, Gas: ${doc.data.gas_quality || 0}` : 'Sensor reading',
+      };
+    });
+
+    // Merge and sort by dateTime descending
+    const combined = [...normalizedReports, ...mappedSensors];
+    combined.sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
+
+    return combined.slice(0, 100);
+  } catch (err) {
+    console.error('Error merging reports:', err.message);
+    return [];
+  }
+}
+
 function getCurrentReports() {
-  const current = isMongoConnected && mongoReports.length > 0 ? mongoReports : sampleReports;
-  return normalizeReports(current);
+  return isMongoConnected && mongoReports.length > 0 ? mongoReports : normalizeReports(sampleReports);
 }
 
 function broadcastReports() {
@@ -56,21 +107,23 @@ async function connectToMongo() {
     
     await client.connect();
     const db = client.db('opticell_db');
-    const collection = db.collection('reports');
     
     mongoClient = client;
-    mongoCollection = collection;
-    mongoReports = await collection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
+    mongoDb = db;
+    mongoReports = await fetchAndMergeReports(db);
     isMongoConnected = true;
-    console.log("✅ MongoDB connected, loaded", mongoReports.length, "reports");
+    console.log("✅ MongoDB connected, loaded", mongoReports.length, "merged reports");
 
     try {
-      mongoChangeStream = collection.watch([], { fullDocument: 'updateLookup' });
+      mongoChangeStream = db.watch();
       mongoChangeStream.on('change', async (change) => {
         try {
-          mongoReports = await collection.find({}).sort({ dateTime: -1 }).limit(100).toArray();
-          broadcastReports();
-          console.log('🔁 MongoDB change stream triggered:', change.operationType);
+          const coll = change.ns ? change.ns.coll : '';
+          if (coll === 'reports' || coll === 'sensor_readings') {
+            mongoReports = await fetchAndMergeReports(db);
+            broadcastReports();
+            console.log(`🔁 MongoDB change stream triggered on collection "${coll}":`, change.operationType);
+          }
         } catch (streamErr) {
           console.warn('⚠️ Error refreshing reports from change stream:', streamErr.message);
         }
@@ -78,15 +131,15 @@ async function connectToMongo() {
       mongoChangeStream.on('error', (streamErr) => {
         console.warn('⚠️ MongoDB change stream error:', streamErr.message);
       });
-      console.log('✅ MongoDB change stream enabled');
+      console.log('✅ MongoDB database-level change stream enabled');
     } catch (streamErr) {
       console.warn('⚠️ MongoDB change stream not available:', streamErr.message);
     }
   } catch (err) {
     console.warn("⚠️ MongoDB connection failed, using sample data:", err.message);
-    mongoReports = sampleReports;
+    mongoReports = normalizeReports(sampleReports);
     isMongoConnected = false;
-    mongoCollection = null;
+    mongoDb = null;
   }
 }
 
